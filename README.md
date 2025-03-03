@@ -79,7 +79,6 @@ lean-python-bridge/
 │   │   └── validation.py        // JSON schema validations
 │   ├── tests
 │   │   ├── test_server.py       // Integration test for server
-│   │   └── test_security.py     // (Optional) skeleton for encryption or security tests
 ├── Dockerfile
 ├── README.md
 └── .github
