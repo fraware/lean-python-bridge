@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v2
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget git python3 python3-pip libzmq3-dev build-essential
+
+      - name: Install Lean 4
+        run: |
+          wget https://github.com/leanprover/lean4/releases/download/nightly-2022-07-21/lean-4.0.0-nightly-2022-07-21-ubuntu.tar.gz
+          tar -xzf lean-4.0.0-nightly-2022-07-21-ubuntu.tar.gz
+          sudo cp lean-4.0.0-nightly-2022-07-21-ubuntu/bin/lean /usr/local/bin/lean
+          sudo cp lean-4.0.0-nightly-2022-07-21-ubuntu/bin/leanc /usr/local/bin/leanc
+
+      - name: Install Python dependencies
+        run: |
+          pip3 install pyzmq numpy jsonschema pytest
+
+      - name: Build Lean project
+        run: |
+          cd lean
+          lake build
+
+      - name: Test Lean proofs
+        run: |
+          cd lean
+          lean proofs/ExampleProof.lean
+          lean proofs/MLProofs.lean
+
+      - name: Test Python code
+        run: |
+          cd python
+          pytest --maxfail=1 --disable-warnings -q
