@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  lean-python-bridge:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "5555:5555"
+    environment:
+      - ZMQ_ENDPOINT=tcp://0.0.0.0:5555
+      - LOG_LEVEL=INFO
+      - ENABLE_METRICS=true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import zmq; ctx = zmq.Context(); sock = ctx.socket(zmq.REQ); sock.connect('tcp://127.0.0.1:5555'); sock.close(); ctx.term()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    profiles:
+      - dev
+      - prod
+
+  lean-python-bridge-dev:
+    build:
+      context: .
+      target: builder
+    ports:
+      - "5555:5555"
+      - "8000:8000"  # For development tools
+    environment:
+      - ZMQ_ENDPOINT=tcp://0.0.0.0:5555
+      - LOG_LEVEL=DEBUG
+      - ENABLE_METRICS=true
+      - ENABLE_DEBUG=true
+    volumes:
+      - ./python:/app/python
+      - ./lean:/app/lean
+    command: ["python", "python/src/server.py", "--dev"]
+    profiles:
+      - dev
+
+  lean-python-bridge-prod:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "5555:5555"
+    environment:
+      - ZMQ_ENDPOINT=tcp://0.0.0.0:5555
+      - LOG_LEVEL=WARNING
+      - ENABLE_METRICS=true
+      - ENABLE_CURVE=true
+      - ZMQ_CURVE_PUBLICKEY=${ZMQ_CURVE_PUBLICKEY}
+      - ZMQ_CURVE_SECRETKEY=${ZMQ_CURVE_SECRETKEY}
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    restart: unless-stopped
+    profiles:
+      - prod
+
+  # Development tools
+  jupyter:
+    image: jupyter/datascience-notebook:latest
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - ./python:/home/jovyan/work/python
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+    profiles:
+      - dev
+
+  # Monitoring stack for production
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    profiles:
+      - prod
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./monitoring/grafana:/etc/grafana/provisioning
+    profiles:
+      - prod
+
+volumes:
+  grafana-storage:
+

@@ -1,0 +1,108 @@
+groups:
+  - name: lean-python-bridge-slos
+    rules:
+      # Latency SLOs
+      - record: lean_python_bridge:request_duration_p50
+        expr: histogram_quantile(0.5, sum(rate(request_duration_seconds_bucket[5m])) by (le))
+      
+      - record: lean_python_bridge:request_duration_p95
+        expr: histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket[5m])) by (le))
+      
+      - record: lean_python_bridge:request_duration_p99
+        expr: histogram_quantile(0.99, sum(rate(request_duration_seconds_bucket[5m])) by (le))
+      
+      # Throughput SLOs
+      - record: lean_python_bridge:requests_per_second
+        expr: sum(rate(requests_total[5m]))
+      
+      - record: lean_python_bridge:success_rate
+        expr: sum(rate(requests_success[5m])) / sum(rate(requests_total[5m]))
+      
+      # Error rate SLOs
+      - record: lean_python_bridge:error_rate
+        expr: sum(rate(requests_error[5m])) / sum(rate(requests_total[5m]))
+      
+      - record: lean_python_bridge:rejection_rate
+        expr: sum(rate(requests_rejected[5m])) / sum(rate(requests_total[5m]))
+      
+      # Queue health SLOs
+      - record: lean_python_bridge:queue_utilization
+        expr: queue_size / max_queue_size
+      
+      # Memory and CPU SLOs
+      - record: lean_python_bridge:memory_usage_bytes
+        expr: process_resident_memory_bytes
+      
+      - record: lean_python_bridge:cpu_usage_percent
+        expr: rate(process_cpu_seconds_total[5m]) * 100
+
+  - name: lean-python-bridge-alerts
+    rules:
+      # Latency alerts
+      - alert: HighLatencyP99
+        expr: lean_python_bridge:request_duration_p99 > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High P99 latency detected"
+          description: "P99 latency is {{ $value }}s, exceeding 50ms threshold"
+      
+      - alert: HighLatencyP95
+        expr: lean_python_bridge:request_duration_p95 > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High P95 latency detected"
+          description: "P95 latency is {{ $value }}s, exceeding 100ms threshold"
+      
+      # Error rate alerts
+      - alert: HighErrorRate
+        expr: lean_python_bridge:error_rate > 0.01
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }}, exceeding 1% threshold"
+      
+      - alert: HighRejectionRate
+        expr: lean_python_bridge:rejection_rate > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request rejection rate"
+          description: "Rejection rate is {{ $value | humanizePercentage }}, exceeding 5% threshold"
+      
+      # Queue health alerts
+      - alert: QueueFull
+        expr: lean_python_bridge:queue_utilization > 0.9
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Request queue nearly full"
+          description: "Queue utilization is {{ $value | humanizePercentage }}, approaching capacity"
+      
+      # Throughput alerts
+      - alert: LowThroughput
+        expr: lean_python_bridge:requests_per_second < 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low request throughput detected"
+          description: "Throughput is {{ $value }} req/s, below 50 req/s threshold"
+      
+      # Server health alerts
+      - alert: ServerDown
+        expr: up{job="lean-python-bridge"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Lean-Python bridge server is down"
+          description: "Server has been down for more than 1 minute"
+

@@ -31,7 +31,9 @@ This repository provides a production-ready prototype for formal verification of
 ### Lean ↔ Python Bridge
 
 - Native ZeroMQ FFI integration in Lean 4 (no separate Python client).
-- "Lazy Pirate" reliability pattern with configurable retries and timeouts.
+- **Advanced reliability patterns**: Lazy Pirate + Paranoid Pirate with heartbeats and correlation IDs.
+- **Multi-format serialization**: Automatic selection between JSON, MessagePack, and Protocol Buffers.
+- **Zero-copy data paths** for large numeric payloads (planned).
 
 ### Formal Proofs & Definitions
 
@@ -43,10 +45,18 @@ This repository provides a production-ready prototype for formal verification of
 - **PythonIntegration.lean** isolates IO bridging from mathematical logic.
 - **Tests.lean** offers a built-in test harness for verifying proofs and integration.
 
-### Structured Data & JSON Schemas
+### Structured Data & Serialization
 
 - Python side uses `jsonschema` for data validation.
 - `schema_version` field for schema evolution.
+- **Intelligent format selection** based on payload size for optimal performance.
+- **Special float handling** for NaN/Inf values across all formats.
+
+### Performance & Benchmarking
+
+- **Comprehensive benchmarking suite** measuring latency, throughput, and resource usage.
+- **CI integration** with automated performance testing and regression detection.
+- **Performance targets** with SLOs for P99 latency and throughput.
 
 ### Docker Container
 
@@ -56,6 +66,8 @@ This repository provides a production-ready prototype for formal verification of
 ### Automated CI
 
 - GitHub Actions pipeline runs Lean build/tests and Python unit tests on each commit.
+- **Performance benchmarking** integrated into CI pipeline.
+- **Automated result analysis** with CSV exports and performance plots.
 
 ## Project Structure
 

@@ -17,10 +17,10 @@ lean_lib LeanPythonBridge {
   ]
 }
 
--- Build the C FFI code for ZeroMQ, same as before
-target «zmqffi» (pkg : Package) : FilePath := do
+-- Build the C FFI code for ZeroMQ
+target zmqffi (pkg : Package) : FilePath := do
   let src := #[ "ffi/LeanZMQ.c" ]
-  let oFiles ← inputChanges (src.map (·.toString)) fun c =>
+  let oFiles ← src.mapM fun c =>
     buildO (pkg.buildDir / c, pkg.dir / c)
       #[ "-I", (pkg.dir / "ffi").toString,
          "-lzmq"
@@ -28,7 +28,7 @@ target «zmqffi» (pkg : Package) : FilePath := do
   buildStaticLib (pkg.buildDir / "libLeanZMQ.a") oFiles
 
 extern_lib leanZMQSupport (pkg := leanPythonBridge) := do
-  let zmqA := pkg.target ``zmqffi
+  let zmqA := pkg.target zmqffi
   pure {
     name := "LeanZMQ"
     staticLibs := #[zmqA.get]
