@@ -10,7 +10,9 @@ Supports multiple serialization formats with automatic selection:
 import json
 import msgpack
 import struct
-from typing import Any, Dict, Union, Optional
+from google.protobuf.json_format import MessageToDict, ParseDict
+from google.protobuf.struct_pb2 import Struct
+from typing import Any, Dict, Optional
 from dataclasses import dataclass
 import logging
 
@@ -22,8 +24,8 @@ class CodecConfig:
     """Configuration for serialization codecs"""
 
     json_threshold: int = 1000  # Use JSON for payloads < 1000 elements
-    msgpack_threshold: int = 100000  # Use MessagePack for payloads < 100k elements
-    protobuf_threshold: int = 1000000  # Use Protobuf for payloads >= 1M elements
+    msgpack_threshold: int = 100000  # Use MessagePack for payloads < 100k
+    protobuf_threshold: int = 1000000  # Use Protobuf for payloads >= 1M
     enable_compression: bool = True
     enable_checksums: bool = False
 
@@ -79,8 +81,11 @@ class SerializationCodec:
             header = struct.pack("B", self._format_to_id(selected_format))
             self._format_stats[selected_format] += 1
 
+            element_count = len(data) if hasattr(data, "__len__") else "unknown"
             logger.debug(
-                f"Serialized {len(data) if hasattr(data, '__len__') else 'unknown'} elements using {selected_format}"
+                "Serialized %s elements using %s",
+                element_count,
+                selected_format,
             )
             return header + result
 
@@ -170,17 +175,20 @@ class SerializationCodec:
             raise
 
     def _serialize_protobuf(self, data: Any) -> bytes:
-        """Serialize to Protocol Buffers (placeholder implementation)"""
-        # For now, fall back to MessagePack for large payloads
-        # TODO: Implement proper protobuf serialization
-        logger.info("Protobuf not yet implemented, using MessagePack")
-        return self._serialize_msgpack(data)
+        """Serialize to Protocol Buffers using google.protobuf Struct."""
+        if not isinstance(data, dict):
+            raise TypeError(
+                "Protobuf serialization currently requires a dictionary payload"
+            )
+        msg = Struct()
+        ParseDict(data, msg)
+        return msg.SerializeToString()
 
     def _deserialize_protobuf(self, data: bytes) -> Any:
-        """Deserialize from Protocol Buffers (placeholder implementation)"""
-        # For now, fall back to MessagePack
-        logger.info("Protobuf not yet implemented, using MessagePack")
-        return self._deserialize_msgpack(data)
+        """Deserialize from Protocol Buffers using google.protobuf Struct."""
+        msg = Struct()
+        msg.ParseFromString(data)
+        return MessageToDict(msg)
 
     def _format_to_id(self, format_name: str) -> int:
         """Convert format name to ID"""
@@ -200,10 +208,16 @@ class SerializationCodec:
 
 
 # Convenience functions for common use cases
-def serialize_matrix(matrix: list, model_info: dict, schema_version: int = 1) -> bytes:
+def serialize_matrix(
+    matrix: list, model_info: dict, schema_version: int = 1
+) -> bytes:
     """Serialize matrix data with automatic format selection"""
     codec = SerializationCodec()
-    payload = {"schema_version": schema_version, "matrix": matrix, "model": model_info}
+    payload = {
+        "schema_version": schema_version,
+        "matrix": matrix,
+        "model": model_info,
+    }
     return codec.serialize(payload)
 
 
@@ -234,7 +248,7 @@ def benchmark_formats(data: Any, iterations: int = 1000) -> Dict[str, float]:
     msgpack_time = (time.perf_counter() - start_time) / iterations
     results["msgpack"] = msgpack_time
 
-    # Test Protobuf (placeholder)
+    # Test Protobuf
     start_time = time.perf_counter()
     for _ in range(iterations):
         codec._serialize_protobuf(data)

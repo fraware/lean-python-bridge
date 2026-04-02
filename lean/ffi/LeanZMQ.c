@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <time.h>
 
 // Production note: For concurrency, each thread must create its own ZeroMQ socket.
@@ -205,4 +206,18 @@ void lean_zmq_free(char *ptr)
         free(ptr);
         log_msg("Freed ZMQ receive buffer.");
     }
+}
+
+uint64_t lean_zmq_strlen_ptr(uint64_t p)
+{
+    if (p == 0)
+    {
+        return 0;
+    }
+    return (uint64_t)strlen((char const *)(uintptr_t)p);
+}
+
+uint8_t lean_zmq_read_byte(uint64_t p, uint64_t i)
+{
+    return (uint8_t)(((unsigned char const *)(uintptr_t)p)[(size_t)i]);
 }

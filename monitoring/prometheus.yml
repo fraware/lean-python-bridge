@@ -3,8 +3,6 @@ global:
   evaluation_interval: 15s
 
 rule_files:
-  # - "first_rules.yml"
-  # - "second_rules.yml"
   - "slo_rules.yml"
 
 scrape_configs:
@@ -16,7 +14,7 @@ scrape_configs:
   # Lean-Python Bridge Server
   - job_name: 'lean-python-bridge'
     static_configs:
-      - targets: ['localhost:5555']
+      - targets: ['lean-python-bridge:8000']
     metrics_path: '/metrics'
     scrape_interval: 5s
     scrape_timeout: 3s
@@ -50,5 +48,3 @@ alerting:
         - targets:
           # - alertmanager:9093
 
-# Recording rules for SLOs
-  - "slo_rules.yml"

@@ -1,0 +1,8 @@
+# Direct runtime dependencies (edit this file; regenerate lock with pip-compile).
+pyzmq==25.1.2
+numpy==1.26.4
+jsonschema==4.22.0
+prometheus-client==0.21.1
+msgpack==1.1.0
+protobuf==5.29.3
+typing-extensions==4.15.0

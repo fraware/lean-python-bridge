@@ -123,8 +123,8 @@ class LeanPythonBridgeBenchmark:
                         python_proc.memory_info().rss / 1024 / 1024
                     )  # MB
                     time.sleep(0.1)  # Sample every 100ms
-                except:
-                    pass
+                except (psutil.Error, OSError, RuntimeError):
+                    time.sleep(0.1)
 
         # Start metrics collection in background thread
         metrics_thread = threading.Thread(target=collect_metrics, daemon=True)
@@ -184,8 +184,7 @@ class LeanPythonBridgeBenchmark:
     def generate_flamegraph(self, result: BenchmarkResult):
         """Generate Python flamegraph using py-spy"""
         try:
-            # This would require py-spy to be installed
-            # For now, we'll create a simple profiling output
+            # Store a deterministic profile summary artifact when py-spy is unavailable.
             profile_file = self.profiles_dir / f"profile_{int(result.timestamp)}.txt"
 
             with open(profile_file, "w") as f:

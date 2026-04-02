@@ -18,7 +18,7 @@ def run_lean_benchmark():
 
     try:
         # Build the Lean project first
-        subprocess.run(["cd lean && lake build"], shell=True, check=True)
+        subprocess.run(["lake", "build"], cwd="lean", check=True)
 
         # Run the benchmark
         result = subprocess.run(

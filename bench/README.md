@@ -2,99 +2,102 @@
 
 ## Overview
 
-This directory contains comprehensive benchmarking tools to measure the performance characteristics of the Lean-Python bridge across various dimensions:
+This directory contains **Python** tooling to stress the ZMQ bridge (client-side latencies, throughput, and resource sampling). The data path is:
 
-- **Latency**: End-to-end request-response times (Lean→FFI→ZMQ→Python→ZMQ→Lean)
-- **Throughput**: Requests per second under various load conditions
-- **Percentiles**: P50, P95, P99 latency distributions
-- **Resource Usage**: CPU%, RSS memory, GC pressure for both Lean and Python
-- **Error Modes**: Failure rates and recovery patterns under load
-
-## Architecture
-
-The bridge follows this data flow:
-```
-Lean 4 → FFI (C) → ZeroMQ → Python Server → ZeroMQ → FFI (C) → Lean 4
+```text
+Client (Python bench) → ZeroMQ REQ → Python server (REP) → response
 ```
 
-## Current Baseline (as of latest benchmark)
+A separate **Lean** script at `bench/lean/TestBench.lean` can be used for experiments; it is **not** part of the default `lake build` roots in `lakefile.lean` (only modules under `lean/` are). After `lake build`, you can try `lake env lean bench/lean/TestBench.lean` if your environment resolves imports; CI does not compile this file.
 
-### Latency Benchmarks
-- **1K float vector**: P50: ~15ms, P95: ~45ms, P99: ~120ms
-- **10K float vector**: P50: ~45ms, P95: ~120ms, P99: ~300ms
-- **100K float vector**: P50: ~180ms, P95: ~450ms, P99: ~800ms
+## Architecture (end-to-end bridge)
 
-### Throughput Benchmarks
-- **Single-threaded**: ~65 req/s sustained
-- **Multi-threaded**: ~180 req/s (3x cores)
+When measuring from Lean through FFI, the full chain is:
 
-### Resource Usage
-- **Lean side**: ~15MB RSS, low CPU during idle
-- **Python side**: ~25MB RSS, CPU spikes during computation
-- **ZeroMQ overhead**: ~2-5ms per request
+```text
+Lean 4 → FFI (C) → ZeroMQ → Python server → ZeroMQ → FFI → Lean 4
+```
+
+The default `runner.py` workload speaks ZMQ directly from Python, which is appropriate for server and network tuning without rebuilding Lean for every run.
+
+## Baseline notes
+
+Numbers in earlier versions of this file (latency percentiles, req/s) are **illustrative**. Record your own baselines with `--save-results` and treat comparisons as relative to your hardware and server flags.
 
 ## Files
 
-- `runner.py` - Main benchmarking script with configurable parameters
-- `lean/TestBench.lean` - Lean-side benchmarking harness
-- `results/` - Generated benchmark results, CSV data, and plots
-- `profiles/` - Python flamegraphs and Lean function timing breakdowns
+| File | Purpose |
+|------|---------|
+| `runner.py` | Main CLI benchmark driver |
+| `ci_benchmark.py` | CI-oriented benchmark entry |
+| `serialization_benchmark.py` | Serialization-focused experiments |
+| `requirements.txt` | Bench-only Python deps (pinned where required by CI policy) |
+| `bench/lean/TestBench.lean` | Optional Lean-side harness (not a default Lake root) |
 
-## Running Benchmarks
+Directories **`bench/results/`** and **`bench/profiles/`** are created when you save results or profiling output.
+
+## Running benchmarks
 
 ### Prerequisites
+
 ```bash
+python -m pip install --upgrade pip
+pip install --require-hashes -r ../python/requirements-runtime.lock.txt
 pip install -r requirements.txt
-cd lean && lake build
 ```
 
-### Quick Benchmark
+From the **repository root**, build Lean if you need artifacts for Lean-side tests:
+
+```bash
+lake build
+```
+
+If `../python/requirements-*.in` changes, regenerate lockfiles:
+
+```bash
+python ../scripts/compile_python_locks.py
+```
+
+### Quick run
+
+From repository root:
+
 ```bash
 python bench/runner.py --duration 60 --payload-size 1000
 ```
 
-### Full Suite
+### Full suite
+
 ```bash
 python bench/runner.py --full-suite --save-results
 ```
 
-## Interpreting Results
+Ensure the server is listening on the configured endpoint (default `tcp://127.0.0.1:5555`) when you benchmark live traffic.
 
-### Latency Percentiles
-- **P50**: Median performance, expected behavior
-- **P95**: 95% of requests complete within this time
-- **P99**: 99% of requests complete within this time (tail latency)
+## Interpreting results
 
-### Throughput Scaling
-- **Linear scaling**: Performance increases proportionally with cores
-- **Sub-linear scaling**: Diminishing returns due to contention
-- **Degraded scaling**: Performance decreases due to overhead
+- **Latency percentiles** (P50 / P95 / P99): tail behavior under your concurrency and payload settings.
+- **Throughput:** requests per second for the chosen scenario; scales with cores, GIL, and matrix work.
+- **Errors:** timeouts, JSON issues, or ZMQ errors — see runner logs.
 
-### Error Analysis
-- **Timeout errors**: Network or processing delays
-- **Serialization errors**: Data format issues
-- **Connection errors**: ZeroMQ socket problems
+## Targets (goals)
 
-## Baseline Targets
+Use these as **engineering goals**, not CI assertions:
 
-Our current SLO targets:
-- **P99 latency**: ≤50ms for 1K-float vectors
-- **Throughput**: ≥100 req/s sustained
-- **Error rate**: ≤0.1% under normal load
-- **Recovery time**: ≤5s after server restart
+- Low tail latency for small payloads on a warm local server.
+- Sustainable throughput under declared concurrency.
+- Error rate near zero under normal load.
 
-## Next Steps
+## Roadmap (engineering backlog)
 
-After establishing this baseline, we'll work on:
-1. **P1**: Transport pattern hardening (Lazy Pirate + Paranoid Pirate)
-2. **P2**: Serialization optimization (MessagePack/Protobuf)
-3. **P3**: Zero-copy data paths
-4. **P4**: Concurrency model improvements
+1. Transport hardening (correlation IDs are supported server-side; extend Lean as needed).
+2. Serialization experiments (see `serialization_benchmark.py`).
+3. Optional integration of `bench/lean/TestBench.lean` into Lake as an explicit target if you want CI to compile it.
 
 ## Contributing
 
-When adding new benchmarks:
-1. Document the test scenario
-2. Include expected performance characteristics
-3. Add regression tests to CI
-4. Update this README with new baseline numbers
+When adding benchmarks:
+
+1. Document the scenario and default parameters.
+2. Prefer deterministic or seeded workloads where possible.
+3. Update this README if new scripts or artifacts are added.

@@ -2,28 +2,74 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["master", "main"]
   pull_request:
-    branches: ["main"]
+    branches: ["master", "main"]
 
 env:
-  LEAN_VERSION: "4.7.0"
   PYTHON_VERSION: "3.11"
 
 jobs:
+  placeholder-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Fail on proof/code placeholders
+        run: |
+          ! rg -n "\bsorry\b|\bTODO\b|assert True|fromUTF8Unchecked" lean python bench
+      - name: Enforce pinned inputs and hashed lockfiles
+        run: |
+          python - <<'PY'
+from pathlib import Path
+import re
+
+inputs = [
+    Path("python/requirements-runtime.in"),
+    Path("python/requirements-dev.in"),
+    Path("bench/requirements.txt"),
+]
+locks = [
+    Path("python/requirements-runtime.lock.txt"),
+    Path("python/requirements-dev.lock.txt"),
+]
+pin_pat = re.compile(r"^\s*([a-zA-Z0-9_.\-]+)\s*(==|~=|>=|<=|>|<)")
+bad = []
+for f in inputs:
+    for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), start=1):
+        s = line.strip()
+        if not s or s.startswith("#") or s.startswith("-r"):
+            continue
+        m = pin_pat.match(s)
+        if not m or m.group(2) != "==":
+            bad.append(f"{f}:{i}:{s}")
+for f in locks:
+    for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), start=1):
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        if "--hash=sha256:" not in s:
+            bad.append(f"{f}:{i}: missing sha256 hash: {s}")
+if bad:
+    print("Dependency policy violation:")
+    print("\n".join(bad))
+    raise SystemExit(1)
+print("Input pins and lockfile hashes OK.")
+PY
+
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 black isort mypy
+          pip install --require-hashes -r python/requirements-dev.lock.txt
       - name: Lint Python code
         run: |
+          ruff check python/src python/tests bench
           flake8 python/ --max-line-length=88 --extend-ignore=E203,W503
           black --check python/
           isort --check-only python/
@@ -32,76 +78,79 @@ jobs:
   build-lean:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       
-      - name: Setup Lean
-        uses: leanprover/lean4-action@v1
-        with:
-          lean-version: ${{ env.LEAN_VERSION }}
+      - name: Setup Lean toolchain
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
+          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+          elan default "$(tr -d '\r\n' < lean-toolchain)"
+          lake --version
       
       - name: Cache Lake build
-        uses: actions/cache@v3
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
-          path: lean/.lake/build
-          key: lean-build-${{ hashFiles('lean/lakefile.lean', 'lean/lean-toolchain') }}
+          path: .lake/build
+          key: lean-build-${{ hashFiles('lakefile.lean', 'lean-toolchain', 'lake-manifest.json') }}
           restore-keys: lean-build-
       
       - name: Build Lean project
-        run: |
-          cd lean
-          lake build
+        run: lake build
       
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: lean-build
-          path: lean/.lake/build
+          path: .lake/build
 
   test-lean:
     runs-on: ubuntu-latest
-    needs: build-lean
+    needs: [build-lean, placeholder-guard]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       
-      - name: Setup Lean
-        uses: leanprover/lean4-action@v1
-        with:
-          lean-version: ${{ env.LEAN_VERSION }}
+      - name: Setup Lean toolchain
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
+          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+          elan default "$(tr -d '\r\n' < lean-toolchain)"
+          lake --version
       
       - name: Download build artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: lean-build
-          path: lean/.lake/build
+          path: .lake/build
       
       - name: Test Lean proofs
         run: |
-          cd lean
-          lean proofs/ExampleProof.lean
-          lean proofs/MLProofs.lean
-          lean proofs/Tests.lean
+          lake env lean lean/MatrixProps.lean
+          lake env lean lean/ExampleProof.lean
+          lake env lean lean/MLProofs.lean
+          lake env lean lean/Tests.lean
 
   test-python:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
       - name: Cache pip dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: ~/.cache/pip
-          key: pip-${{ hashFiles('bench/requirements.txt', 'python/requirements.txt') }}
+          key: pip-${{ hashFiles('bench/requirements.txt', 'python/requirements-runtime.lock.txt', 'python/requirements-dev.lock.txt') }}
           restore-keys: pip-
       
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install --require-hashes -r python/requirements-runtime.lock.txt
+          pip install --require-hashes -r python/requirements-dev.lock.txt
           pip install -r bench/requirements.txt
-          pip install -r python/requirements.txt
       
       - name: Test Python code
         run: |
@@ -109,37 +158,39 @@ jobs:
           pytest --maxfail=1 --disable-warnings -q --cov=src --cov-report=xml
       
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238
         with:
           file: python/coverage.xml
 
   benchmark:
     runs-on: ubuntu-latest
     needs: [build-lean, test-python]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
+          pip install --require-hashes -r python/requirements-runtime.lock.txt
           pip install -r bench/requirements.txt
       
       - name: Download Lean build
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: lean-build
-          path: lean/.lake/build
+          path: .lake/build
       
       - name: Run benchmarks
         run: |
           python bench/ci_benchmark.py
       
       - name: Upload benchmark results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: benchmark-results
           path: bench/results/
@@ -148,49 +199,71 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-lean, test-python]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
+          pip install --require-hashes -r python/requirements-runtime.lock.txt
           pip install -r bench/requirements.txt
       
       - name: Start Python server
         run: |
           cd python
-          python src/server.py &
-          sleep 5
+          python src/server.py --dev --metrics-port 8000 &
+          for i in $(seq 1 20); do
+            python - <<'PY'
+import json, zmq
+ctx=zmq.Context()
+s=ctx.socket(zmq.REQ)
+s.setsockopt(zmq.RCVTIMEO, 500)
+s.connect("tcp://127.0.0.1:5555")
+try:
+    s.send_string(json.dumps("HEARTBEAT"))
+    print(s.recv_string())
+    raise SystemExit(0)
+except Exception:
+    raise SystemExit(1)
+finally:
+    s.close()
+    ctx.term()
+PY
+            if [ $? -eq 0 ]; then break; fi
+            sleep 1
+          done
       
       - name: Run integration tests
-        run: |
-          cd lean
-          lean proofs/PythonIntegration.lean
+        run: lake env lean lean/PythonIntegration.lean
 
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
       - name: Install security tools
         run: |
-          pip install bandit safety
+          python -m pip install --upgrade pip
+          pip install --require-hashes -r python/requirements-dev.lock.txt
       
       - name: Run security scan
         run: |
-          bandit -r python/src/ -f json -o bandit-report.json || true
-          safety check --json --output safety-report.json || true
+          bandit -r python/src/ -f json -o bandit-report.json
+          pip-audit -r python/requirements-runtime.lock.txt --format json --output pip-audit-runtime-report.json
+          pip-audit -r python/requirements-dev.lock.txt --format json --output pip-audit-dev-report.json
       
       - name: Upload security reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: security-reports
           path: |
             bandit-report.json
-            safety-report.json
+            pip-audit-runtime-report.json
+            pip-audit-dev-report.json

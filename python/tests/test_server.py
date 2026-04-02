@@ -4,7 +4,8 @@ import zmq
 import json
 import pytest
 import socket
-import os
+import sys
+from pathlib import Path
 
 
 def is_port_open(port):
@@ -20,22 +21,14 @@ def is_port_open(port):
 
 @pytest.fixture(scope="module")
 def zmq_server():
-    """Start ZMQ server with proper error handling"""
-    # Kill any existing processes on port 5555
-    try:
-        os.system("taskkill /f /im python.exe 2>nul")
-    except Exception:
-        pass
-
-    # Wait for port to be free
-    max_wait = 10
-    while is_port_open(5555) and max_wait > 0:
-        time.sleep(0.5)
-        max_wait -= 1
+    """Start an isolated server subprocess and cleanly tear it down."""
+    if is_port_open(5555):
+        pytest.skip("Port 5555 already in use; refusing to kill unrelated processes.")
 
     # Start server
     proc = subprocess.Popen(
-        ["python", "src/server.py", "--dev"],
+        [sys.executable, "src/server.py", "--dev", "--metrics-port", "8001"],
+        cwd=str(Path(__file__).resolve().parents[1]),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -58,8 +51,6 @@ def zmq_server():
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
         proc.kill()
-    except Exception:
-        pass
 
 
 def test_v1_sum(zmq_server):
@@ -117,10 +108,20 @@ def test_v2_schema(zmq_server):
         context.term()
 
 
-def test_server_health():
-    """Quick health check without starting full server"""
-    # This test doesn't require the server to be running
-    assert True
+def test_server_health(zmq_server):
+    """Health probe over ZMQ heartbeat contract."""
+    context = zmq.Context()
+    client = context.socket(zmq.REQ)
+    client.setsockopt(zmq.RCVTIMEO, 3000)
+    client.connect("tcp://127.0.0.1:5555")
+    try:
+        client.send_string(json.dumps("HEARTBEAT"))
+        reply = json.loads(client.recv_string())
+        assert reply["status"] == "heartbeat_ack"
+        assert "timestamp" in reply
+    finally:
+        client.close()
+        context.term()
 
 
 def test_validation_schemas():
@@ -134,13 +135,10 @@ def test_validation_schemas():
 
 def test_imports():
     """Test that all required modules can be imported"""
-    # Test imports work without actually using them
-    try:
-        import zmq
-        import json
-        import jsonschema
-        import numpy
+    import zmq
+    import jsonschema
+    import numpy
 
-        assert True
-    except ImportError:
-        pytest.fail("Required modules not available")
+    assert zmq is not None
+    assert jsonschema is not None
+    assert numpy is not None

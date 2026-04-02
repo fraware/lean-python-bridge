@@ -1,67 +1,53 @@
-# Multi-stage Docker build for Lean-Python Bridge
-# Stage 1: Builder stage for Lean and FFI compilation
+# Multi-stage Docker build for lean-python-bridge
 FROM ubuntu:22.04 AS builder
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    wget \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
     git \
     libgmp-dev \
     libzmq3-dev \
     build-essential \
-    python3 \
-    python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Lean 4
-RUN wget https://github.com/leanprover/lean4/releases/download/v4.7.0/lean-4.7.0-linux.tar.gz \
-    && tar -xzf lean-4.7.0-linux.tar.gz \
-    && cp lean-4.7.0-linux/bin/lean /usr/local/bin/lean \
-    && cp lean-4.7.0-linux/bin/leanc /usr/local/bin/leanc \
-    && rm -rf lean-4.7.0-linux*
-
-# Install Python dependencies for build
-RUN pip3 install --no-cache-dir pyzmq numpy
-
-# Copy source and build Lean project
 WORKDIR /build
-COPY lean/ lean/
-RUN cd lean && lake build
 
-# Stage 2: Runtime stage
+COPY lakefile.lean lake-manifest.json lean-toolchain ./
+COPY lean/ lean/
+
+RUN curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y \
+    && export PATH="$HOME/.elan/bin:$PATH" \
+    && elan default "$(tr -d '\r\n' < lean-toolchain)" \
+    && lake build
+
+# Stage 2: Runtime (Python server)
 FROM python:3.11-slim AS runtime
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libzmq5 \
     libgmp10 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Create non-root user
 RUN useradd --create-home --shell /bin/bash app \
     && mkdir -p /app \
     && chown app:app /app
 
-# Copy Python dependencies and install
-COPY python/requirements.txt /tmp/
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+COPY python/requirements-runtime.lock.txt /tmp/
+RUN pip install --no-cache-dir --require-hashes -r /tmp/requirements-runtime.lock.txt
 
-# Copy built Lean artifacts and Python source
-COPY --from=builder /build/lean/.lake/build /app/lean/.lake/build
-COPY python/ /app/python/
-COPY --chown=app:app . /app/
+COPY --from=builder /build/.lake /app/.lake
+COPY --chown=app:app python/ /app/python/
+COPY --chown=app:app monitoring/ /app/monitoring/
+COPY --chown=app:app README.md /app/README.md
+COPY --chown=app:app LICENSE /app/LICENSE
 
-# Switch to app user
 USER app
 WORKDIR /app
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import zmq; ctx = zmq.Context(); sock = ctx.socket(zmq.REQ); sock.connect('tcp://127.0.0.1:5555'); sock.close(); ctx.term()" || exit 1
 
-# Expose port
-EXPOSE 5555
+EXPOSE 5555 8000
 
-# Default command
 CMD ["python", "python/src/server.py"]

@@ -1,255 +1,151 @@
-# Lean-Python Bridge Quickstart Guide
+# Lean-Python Bridge Quickstart
 
-## Overview
-
-This guide will get you up and running with the Lean-Python bridge in under 30 minutes. The bridge enables formal verification in Lean 4 with high-performance numerical computation in Python via ZeroMQ.
-
-## Prerequisites
-
-- **Docker & Docker Compose** (recommended)
-- **Python 3.11+** (if running locally)
-- **Lean 4.7.0+** (if running locally)
-- **ZeroMQ libraries** (if running locally)
-
-## Quick Start with Docker (Recommended)
-
-### 1. Clone and Setup (2 minutes)
+## 1) Clone
 
 ```bash
-git clone https://github.com/yourusername/lean-python-bridge.git
+git clone https://github.com/fraware/lean-python-bridge.git
 cd lean-python-bridge
 ```
 
-### 2. Start Development Environment (3 minutes)
+## 2) Prerequisites
+
+- **Python 3.11** (matches CI and lockfiles).
+- **Lean:** [elan](https://github.com/leanprover/elan) or another install matching `lean-toolchain`.
+- **Native `lake build`:** a C compiler (`cc`/`gcc`), **libzmq** development package, and **libgmp** dev files. If this is painful on your OS, use **Docker** (see below) for a full Lean build.
+
+## 3) Install Python dependencies (hash-locked)
 
 ```bash
-# Start development environment
-docker-compose --profile dev up -d
-
-# Check services
-docker-compose ps
-```
-
-This starts:
-- **Lean-Python Bridge Server** (port 5555)
-- **Jupyter Notebook** (port 8888) - for testing and development
-
-### 3. Test the Bridge (5 minutes)
-
-```bash
-# Test from command line
-python -c "
-import zmq
-import json
-context = zmq.Context()
-socket = context.socket(zmq.REQ)
-socket.connect('tcp://localhost:5555')
-
-# Send test matrix
-data = {
-    'schema_version': 1,
-    'matrix': [[1, 2], [3, 4]],
-    'model': {'name': 'TestModel', 'version': '1.0'}
-}
-socket.send_string(json.dumps(data))
-response = socket.recv_string()
-print('Response:', response)
-"
-```
-
-Expected output:
-```json
-{"status": "success", "matrix_sum": 10.0, "model_checked": "TestModel", ...}
-```
-
-### 4. Run Benchmarks (10 minutes)
-
-```bash
-# Install benchmark dependencies
+python -m pip install --upgrade pip
+pip install --require-hashes -r python/requirements-runtime.lock.txt
+pip install --require-hashes -r python/requirements-dev.lock.txt
 pip install -r bench/requirements.txt
-
-# Run quick benchmark
-python bench/runner.py --duration 30 --payload-size 1000 --save-results
-
-# Run full suite
-python bench/runner.py --full-suite
 ```
 
-### 5. Monitor Performance (5 minutes)
+If you edit `python/requirements-runtime.in` or `python/requirements-dev.in`, regenerate locks:
 
 ```bash
-# Start production monitoring stack
-docker-compose --profile prod up -d
-
-# Access monitoring
-# Prometheus: http://localhost:9090
-# Grafana: http://localhost:3000 (admin/admin)
+python scripts/compile_python_locks.py
 ```
 
-## Local Development Setup
+## 4) Build Lean
 
-### 1. Install Dependencies
-
-```bash
-# Python dependencies
-pip install -r python/requirements.txt
-pip install -r bench/requirements.txt
-
-# Lean 4 (using elan)
-curl -sSL https://get.elan.sh | sh
-elan install 4.7.0
-elan default 4.7.0
-```
-
-### 2. Build Lean Project
+From the **repository root**:
 
 ```bash
-cd lean
 lake build
 ```
 
-### 3. Start Server
+This compiles the `LeanPythonBridge` library (including `lean/FFI/LeanZMQ.c` linked against libzmq).
+
+## 5) Start the Python bridge server
+
+From the repository root:
 
 ```bash
-# Terminal 1: Start Python server
 cd python
 python src/server.py --dev
-
-# Terminal 2: Test Lean integration
-cd lean
-lean proofs/PythonIntegration.lean
 ```
 
-## Production Deployment
+Default REP socket: `tcp://*:5555` unless you set `ZMQ_ENDPOINT`. With metrics enabled (`ENABLE_METRICS=true`), scrape `http://127.0.0.1:8000/metrics` (port from `METRICS_PORT`).
 
-### 1. Environment Configuration
+## 6) Send a smoke-test request
+
+In a second terminal (repository root or any cwd):
 
 ```bash
-# Set production environment variables
-export ZMQ_ENDPOINT="tcp://0.0.0.0:5555"
-export LOG_LEVEL="WARNING"
-export ENABLE_METRICS="true"
-export ENABLE_CURVE="true"
-export ZMQ_CURVE_PUBLICKEY="your_public_key"
-export ZMQ_CURVE_SECRETKEY="your_secret_key"
+python - <<'PY'
+import json
+import zmq
+
+ctx = zmq.Context()
+sock = ctx.socket(zmq.REQ)
+sock.connect("tcp://127.0.0.1:5555")
+payload = {
+    "schema_version": 1,
+    "matrix": [[1, 2], [3, 4]],
+    "model": {"name": "TestModel", "version": "1.0"},
+}
+sock.send_string(json.dumps(payload))
+print(sock.recv_string())
+sock.close()
+ctx.term()
+PY
 ```
 
-### 2. Start Production Stack
+**Heartbeat** (JSON string payload, as the server expects):
 
 ```bash
-# Start with production profile
-docker-compose --profile prod up -d
-
-# Scale workers
-docker-compose --profile prod up -d --scale lean-python-bridge-prod=3
+python - <<'PY'
+import json, zmq
+ctx = zmq.Context()
+s = ctx.socket(zmq.REQ)
+s.connect("tcp://127.0.0.1:5555")
+s.send_string(json.dumps("HEARTBEAT"))
+print(s.recv_string())
+s.close()
+ctx.term()
+PY
 ```
 
-### 3. Health Checks
+## 7) Run tests
+
+**Python:**
 
 ```bash
-# Check server health
-curl http://localhost:5555/health
-
-# Check metrics
-curl http://localhost:5555/metrics
-
-# Monitor logs
-docker-compose logs -f lean-python-bridge-prod
+cd python && pytest -q tests
 ```
 
-## Performance Tuning
-
-### 1. Server Configuration
+**Lean (representative checks):**
 
 ```bash
-# Start with custom worker configuration
-python src/server.py --workers 4 --threads 8 --endpoint tcp://0.0.0.0:5555
+lake env lean lean/ExampleProof.lean
+lake env lean lean/MatrixProps.lean
+lake env lean lean/MLProofs.lean
+lake env lean lean/Tests.lean
 ```
 
-### 2. Load Testing
+Full bridge integration (needs server running on `tcp://127.0.0.1:5555`):
 
 ```bash
-# Test with different payload sizes
-python bench/runner.py --duration 60 --payload-size 10000 --concurrency 4
-
-# Test with different concurrency levels
-python bench/runner.py --duration 60 --payload-size 1000 --concurrency 1
-python bench/runner.py --duration 60 --payload-size 1000 --concurrency 2
-python bench/runner.py --duration 60 --payload-size 1000 --concurrency 4
+lake env lean lean/PythonIntegration.lean
 ```
 
-### 3. Monitor SLOs
+## 8) Run benchmarks
 
-Key performance targets:
-- **P99 Latency**: ≤50ms for 1K-float vectors
-- **Throughput**: ≥100 req/s sustained
-- **Error Rate**: ≤0.1% under normal load
-- **Recovery Time**: ≤5s after server restart
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Connection Refused**
-   ```bash
-   # Check if server is running
-   docker-compose ps
-   
-   # Check server logs
-   docker-compose logs lean-python-bridge
-   ```
-
-2. **High Latency**
-   ```bash
-   # Check server metrics
-   curl http://localhost:5555/metrics
-   
-   # Check queue utilization
-   # Look for queue_size vs max_queue_size
-   ```
-
-3. **Memory Issues**
-   ```bash
-   # Check memory usage
-   docker stats lean-python-bridge
-   
-   # Restart with more memory
-   docker-compose down
-   docker-compose --profile prod up -d
-   ```
-
-### Debug Mode
+From repository root (with server listening on the default endpoint if you measure live traffic):
 
 ```bash
-# Start server in debug mode
-python src/server.py --dev --endpoint tcp://0.0.0.0:5555
-
-# Enable verbose logging
-export LOG_LEVEL="DEBUG"
+python bench/runner.py --duration 30 --payload-size 1000 --save-results
 ```
 
-## Next Steps
+Larger run:
 
-After completing this quickstart:
+```bash
+python bench/runner.py --full-suite --save-results
+```
 
-1. **Explore the Codebase**: Review `lean/proofs/` for mathematical definitions
-2. **Run Benchmarks**: Use `bench/runner.py` to establish performance baselines
-3. **Monitor SLOs**: Set up alerts in Grafana for performance thresholds
-4. **Scale Up**: Increase worker processes and threads based on load testing
-5. **Security**: Enable CURVE encryption for production deployments
+Output directories such as `bench/results/` and `bench/profiles/` are created when you save results.
 
-## Support
+## Docker quick path
 
-- **Documentation**: See `docs/` directory for detailed guides
-- **Issues**: Report bugs and feature requests on GitHub
-- **Discussions**: Join community discussions for questions and ideas
+Build includes `lake build` in an Ubuntu stage; runtime image runs the Python server with `.lake` copied in for tooling that expects artifacts.
 
-## Performance Expectations
+```bash
+docker build -t lean-python-bridge .
+docker run --rm -p 5555:5555 -p 8000:8000 \
+  -e ENABLE_METRICS=true \
+  lean-python-bridge
+```
 
-Based on current benchmarks:
-- **1K matrix**: P99 ≤ 50ms, ~65 req/s
-- **10K matrix**: P99 ≤ 200ms, ~25 req/s  
-- **100K matrix**: P99 ≤ 1000ms, ~5 req/s
+Compose (dev profile mounts local `python/` and `lean/`):
 
-Your mileage may vary based on hardware and configuration.
+```bash
+docker compose --profile dev up lean-python-bridge-dev
+```
 
+## Troubleshooting pointers
+
+- Transport, retries, and Lean API details: [transport-troubleshooting.md](transport-troubleshooting.md)
+- CI and dependency policy: `.github/workflows/ci.yml`
+- Repository overview: [README.md](../README.md)

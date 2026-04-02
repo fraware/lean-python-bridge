@@ -1,245 +1,208 @@
-# Lean-Python Bridge for Scientific Computing
+<h1 align="center">lean-python-bridge</h1>
 
-## Table of Contents
+<p align="center">
+  <strong>Formal methods meet a numerical service</strong><br/>
+  Lean&nbsp;4 · ZeroMQ · Python
+</p>
 
-- [Overview](#overview)
-- [Features](#features)
-- [Project Structure](#project-structure)
-- [Prerequisites & Installation](#prerequisites--installation)
-- [Usage](#usage)
-  - [Lean Side](#lean-side)
-  - [Python Side](#python-side)
-- [Docker Usage](#docker-usage)
-- [Testing & Verification](#testing--verification)
-- [Security Considerations](#security-considerations)
-- [Contributing](#contributing)
-- [License](#license)
+<p align="center">
+  <a href="docs/quickstart.md">Quickstart</a>
+  &nbsp;·&nbsp;
+  <a href="docs/transport-troubleshooting.md">Transport &amp; troubleshooting</a>
+  &nbsp;·&nbsp;
+  <a href="LICENSE">MIT License</a>
+</p>
 
-## Overview
+---
 
-This repository provides a production-ready prototype for formal verification of machine learning or scientific pipelines using **Lean 4** (a modern theorem prover and programming language) and **Python** (for numerical computations, data science, and ML libraries). Communication between Lean and Python is facilitated by **ZeroMQ**, offering reliable request-reply patterns with timeouts and retries (“Lazy Pirate”).
+This repository is a **Lean&nbsp;4 Lake package** and a **Python REQ/REP server** wired together over **ZeroMQ**: Lean can call into C FFI (`libzmq`), exchange JSON with Python, and ship proofs alongside integration code. Application logic on the Python side lives in `python/src/`; formal artifacts live under `lean/`.
 
-**Key Goals:**
+The Lake library is published as **`LeanPythonBridge`** (see `lakefile.lean`). Typical modules include `FFI.ZMQ`, `MathDefs`, `MatrixProps`, `PythonIntegration`, `MLProofs`, `Tests`, and `ExampleProof`.
 
-- **Mathematically Rigor:** Prove key properties of transformations and models in Lean 4 (e.g., convexity, stability, nonnegativity).
-- **Numerical Execution:** Offload heavy computations (e.g., summation, ML inference, dataset transformations) to Python.
-- **Robust Communication:** Use ZeroMQ with built-in timeouts, retries, and error handling.
-- **Extensibility:** Easily add new theorems in Lean or new Python libraries (NumPy, PyTorch, scikit-learn, etc.).
-
-## Features
-
-### Lean ↔ Python Bridge
-
-- Native ZeroMQ FFI integration in Lean 4 (no separate Python client).
-- **Advanced reliability patterns**: Lazy Pirate + Paranoid Pirate with heartbeats and correlation IDs.
-- **Multi-format serialization**: Automatic selection between JSON, MessagePack, and Protocol Buffers.
-- **Zero-copy data paths** for large numeric payloads (planned).
-
-### Formal Proofs & Definitions
-
-- **MathDefs.lean** for common mathematical abstractions (e.g., matrix sums).
-- **MatrixProps.lean** with formal theorems (e.g., nonnegative matrix ⇒ nonnegative sum).
-
-### Modular Codebase
-
-- **PythonIntegration.lean** isolates IO bridging from mathematical logic.
-- **Tests.lean** offers a built-in test harness for verifying proofs and integration.
-
-### Structured Data & Serialization
-
-- Python side uses `jsonschema` for data validation.
-- `schema_version` field for schema evolution.
-- **Intelligent format selection** based on payload size for optimal performance.
-- **Special float handling** for NaN/Inf values across all formats.
-
-### Performance & Benchmarking
-
-- **Comprehensive benchmarking suite** measuring latency, throughput, and resource usage.
-- **CI integration** with automated performance testing and regression detection.
-- **Performance targets** with SLOs for P99 latency and throughput.
-
-### Docker Container
-
-- Includes Lean 4, ZeroMQ, Python environment.
-- Ready for easy deployment.
-
-### Automated CI
-
-- GitHub Actions pipeline runs Lean build/tests and Python unit tests on each commit.
-- **Performance benchmarking** integrated into CI pipeline.
-- **Automated result analysis** with CSV exports and performance plots.
-
-## Project Structure
-
-```plaintext
-lean-python-bridge/
-├── lean
-│   ├── lakefile.lean
-│   ├── ffi
-│   │   ├── LeanZMQ.c
-│   │   ├── LeanZMQ.h
-│   │   ├── LeanZMQ.lean         // ZeroMQ FFI binding
-│   └── proofs
-│       ├── MathDefs.lean        // Basic mathematical definitions
-│       ├── MatrixProps.lean     // Formal theorems about matrices
-│       ├── PythonIntegration.lean // ZeroMQ client logic (Lazy Pirate), calls to Python
-│       ├── Tests.lean           // Lean test harness & examples
-│       └── ExampleProof.lean    // Simple demonstration theorem
-├── python
-│   ├── src
-│   │   ├── server.py            // ZeroMQ REP server that handles requests & computations
-│   │   └── validation.py        // JSON schema validations
-│   ├── tests
-│   │   ├── test_server.py       // Integration test for server
-├── Dockerfile
-├── README.md
-└── .github
-    └── workflows
-        └── ci.yml               // GitHub Actions pipeline
+```mermaid
+flowchart LR
+  subgraph lean [Lean 4]
+    L[Proofs and integration]
+  end
+  subgraph ffi [C FFI]
+    C[LeanZMQ.c]
+  end
+  subgraph wire [Network]
+    Z[ZeroMQ REQ/REP]
+  end
+  subgraph py [Python]
+    S[server.py · codec · validation]
+  end
+  L --> C
+  C --> Z
+  Z --> S
+  S --> Z
+  Z --> C
+  C --> L
 ```
 
-**Key Modules:**
+---
 
-- **Lean**
+## Contents
 
-  - `MathDefs.lean`: Reusable definitions (lists, matrix sums, etc.).
-  - `MatrixProps.lean`: Fully formal theorems (e.g., nonNegMatrixSum).
-  - `PythonIntegration.lean`: All ZeroMQ bridging code.
-  - `Tests.lean`: Test harness for verifying proofs and Python calls.
+- [Contents](#contents)
+- [Get started in two minutes](#get-started-in-two-minutes)
+- [What you need to build Lean](#what-you-need-to-build-lean)
+- [Imports and module layout](#imports-and-module-layout)
+- [Repository tree](#repository-tree)
+- [Python dependencies \& lockfiles](#python-dependencies--lockfiles)
+- [Run the server](#run-the-server)
+- [Tests](#tests)
+- [Docker \& Compose](#docker--compose)
+- [CI, security, contributing](#ci-security-contributing)
 
-- **Python**
+---
 
-- `server.py`: ZeroMQ server with request-reply pattern.
-- `validation.py`: JSON schema checks for structured data.
+## Get started in two minutes
 
-## Prerequisites & Installation
+| Step | Command |
+|------|---------|
+| Build Lean | `lake build` |
+| Runtime Python deps | `pip install --require-hashes -r python/requirements-runtime.lock.txt` |
+| Dev tooling (lint, types, …) | `pip install --require-hashes -r python/requirements-dev.lock.txt` |
 
-### Lean 4
-
-Install from [Lean’s official docs](https://leanprover.github.io/).
-
-### ZeroMQ
-
-Install the ZeroMQ library & headers (e.g., `libzmq3-dev` on Ubuntu, `zeromq` on macOS via Homebrew, etc.).
-
-### Python 3
-
-Ensure you have `pyzmq`, `numpy`, and `jsonschema`.
-
-Example:
+Full local install (from the repo root):
 
 ```bash
-pip install pyzmq numpy jsonschema
-```
-
-### C Toolchain
-
-For compiling the FFI code (`LeanZMQ.c`) into a library. Usually gcc or clang.
-
-Once dependencies are installed:
-
-```bash
-git clone https://github.com/YourUsername/lean-python-bridge.git
-cd lean-python-bridge
-```
-
-## Usage
-
-### Lean Side
-
-1. **Build** the Lean library and FFI code:
-
-```bash
-cd lean
+python -m pip install --upgrade pip
+pip install --require-hashes -r python/requirements-runtime.lock.txt
+pip install --require-hashes -r python/requirements-dev.lock.txt
+pip install -r bench/requirements.txt
 lake build
 ```
 
-This compiles your Lean modules and builds the `libLeanZMQ.a` library from `LeanZMQ.c`.
-
-2. **Run Proof & Integration Tests:**
+Smoke checks:
 
 ```bash
- -- Option 1: Evaluate the test file directly
-lean proofs/Tests.lean
-
- -- Option 2: Use Lake
-lake exe Tests
+lake env lean lean/ExampleProof.lean
+PYTHONPATH=python/src python -c "import validation; print('ok')"
 ```
 
-3. **Result:**
+---
 
-- Lean verifies theorems like nonNegMatrixSum.
-- Lean tries to call the Python server (via ZeroMQ).
+## What you need to build Lean
 
-### Python Side
+`lake build` compiles `lean/FFI/LeanZMQ.c` and links against **libzmq**. You need:
 
-1. **Launch** the ZeroMQ server:
+- a **C toolchain** (`cc` / `gcc`),
+- **libzmq** development headers and libraries (e.g. `libzmq3-dev` on Debian/Ubuntu),
+- **libgmp** development files.
+
+The [Dockerfile](Dockerfile) uses Ubuntu&nbsp;22.04 with `build-essential` and `libzmq3-dev`—that is the well-trodden path. On Windows, prefer **WSL** or **Docker** for a frictionless build; native MSVC/MinGW setups are possible but not what CI exercises.
+
+---
+
+## Imports and module layout
+
+- **Inside this repo:** after `lake build`, import by module name, e.g. `import MathDefs`, `import FFI.ZMQ`, `import PythonIntegration`. Sources sit under `lean/` (Lake `srcDir`).
+- **As a dependency:** add a `require` in your `lakefile.lean` pointing at this repository and revision, then import the modules you need.
+- **Python:** put `python/src` on `PYTHONPATH` (or an equivalent layout) so `validation`, `codec`, and friends resolve without editing `sys.path` in every script.
+
+---
+
+## Repository tree
+
+```text
+lean-python-bridge/
+├── lakefile.lean              # Lake package leanPythonBridge, FFI, static lib
+├── lake-manifest.json         # Lock with lakefile; commit when it changes
+├── lean-toolchain             # Pin for elan / CI
+├── lean/                      # Lean sources; C FFI in lean/FFI/
+├── python/                    # Server, lockfiles, tests
+├── bench/                     # Benchmarks; optional Lean harness in bench/lean/
+├── docs/                      # Guides
+├── monitoring/                # Prometheus / Grafana samples
+├── scripts/                   # e.g. compile_python_locks.py
+├── Dockerfile
+├── docker-compose.yml
+└── .github/workflows/ci.yml
+```
+
+---
+
+## Python dependencies & lockfiles
+
+| Role | Files |
+|------|--------|
+| Human-edited inputs | `python/requirements-runtime.in`, `python/requirements-dev.in` |
+| Installed by CI/Docker | `python/requirements-*.lock.txt` with `pip install --require-hashes -r …` |
+
+After changing an `.in` file, refresh the locks:
+
+```bash
+python scripts/compile_python_locks.py
+```
+
+Locks target **Linux CPython&nbsp;3.11** manylinux wheels—the same environment as CI and the container image.
+
+---
+
+## Run the server
 
 ```bash
 cd python
-python src/server.py
+python src/server.py --dev
 ```
 
-By default, it binds to `tcp://\*:5555.`
+By default the REP socket binds to `tcp://*:5555`. Override with `ZMQ_ENDPOINT` and related environment variables (see `python/src/server.py`). With `ENABLE_METRICS=true`, Prometheus text metrics are exposed on `METRICS_PORT` (default **8000**).
 
-2. **(Optional)** Test the Python code with `pytest`:
+The Docker image runs `python python/src/server.py` without `--dev`; pass flags or environment variables for your environment.
+
+---
+
+## Tests
+
+**Python**
 
 ```bash
-pytest --maxfail=1 --disable-warnings -q
+cd python && pytest -q tests
 ```
 
-This runs integration tests (e.g., `test_server.py`).
+**Lean** (aligned with CI)
 
-## Docker Usage
+```bash
+lake env lean lean/MatrixProps.lean
+lake env lean lean/ExampleProof.lean
+lake env lean lean/MLProofs.lean
+lake env lean lean/Tests.lean
+```
 
-A **Dockerfile** is provided for convenience. It installs Lean 4, ZeroMQ, Python, and dependencies.
+The integration job also runs `lake env lean lean/PythonIntegration.lean` against a live server on `tcp://127.0.0.1:5555`.
 
-1. **Build the image:**
+---
+
+## Docker & Compose
 
 ```bash
 docker build -t lean-python-bridge .
+docker run --rm -p 5555:5555 -p 8000:8000 \
+  -e ENABLE_METRICS=true -e METRICS_PORT=8000 \
+  lean-python-bridge
 ```
 
-2. **Run the container:**
+Compose (dev profile mounts local `python/` and `lean/`; see [docker-compose.yml](docker-compose.yml)):
 
 ```bash
-docker run --rm -p 5555:5555 lean-python-bridge
+docker compose --profile dev up lean-python-bridge-dev
 ```
 
-This starts the Python server inside the container, listening on port 5555. (You can adjust the `CMD` in the Dockerfile if you prefer running Lean from within the container, etc.)
+---
 
-## Testing & Verification
+## CI, security, contributing
 
-### Lean Tests
+**Continuous integration** — [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs policy checks on placeholders, hashed lockfiles, Python lint and tests, `lake build`, Lean entry points, optional benchmarks on default-branch pushes, an integration job (server plus `PythonIntegration.lean`), and security scans.
 
-The file `Tests.lean` has `#eval` statements that verify key theorems and optionally call Python.  
-You can also define a custom test harness using Lean 4’s unit test framework.
+**Security** — On untrusted networks, consider ZeroMQ **CURVE** (`ENABLE_CURVE` and server keys). Treat external payloads as hostile: validate with `python/src/validation.py`.
 
-### Python Tests
+**Contributing** — Small, reviewable changes; regenerate Python locks when dependencies move; run `lake build` (Linux CI or Docker) and Python tests before opening a pull request.
 
-Located in `python/tests/`.  
-Run `pytest` to ensure the server handles data and schema validations correctly.
+---
 
-### Continuous Integration
-
-A GitHub Actions workflow (`.github/workflows/ci.yml`) automatically builds the Lean code and runs tests on each push/pull request.  
-Extending this with coverage reports or advanced QA checks is encouraged.
-
-## Security Considerations
-
-- **ZeroMQ Encryption**: Consider enabling CURVE security in both Lean (via FFI `setsockopt`) and Python for production scenarios with untrusted networks.
-- **Data Validation**: The Python side uses `jsonschema` to ensure well-structured requests. For large or specialized data (e.g., big ML models), consider a binary format like Protocol Buffers.
-- **Dependency Management**: Keep an eye on ZeroMQ, Lean, and Python dependencies. Perform regular security updates.
-
-## Contributing
-
-1. **Fork** this repo and create your feature branch.
-2. **Implement** or refine proofs, add new Python features, or improve the bridging.
-3. **Open a Pull Request** with a clear description of changes.
-4. **Coordinate** with maintainers for reviews and merges.
-
-Feel free to open issues for discussions or bug reports.
-
-## License
-
-MIT License.
+<p align="center">
+  MIT License · see <a href="LICENSE">LICENSE</a>
+</p>
