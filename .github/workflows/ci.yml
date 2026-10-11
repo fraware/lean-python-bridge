@@ -20,41 +20,41 @@ jobs:
       - name: Enforce pinned inputs and hashed lockfiles
         run: |
           python - <<'PY'
-from pathlib import Path
-import re
-
-inputs = [
-    Path("python/requirements-runtime.in"),
-    Path("python/requirements-dev.in"),
-    Path("bench/requirements.txt"),
-]
-locks = [
-    Path("python/requirements-runtime.lock.txt"),
-    Path("python/requirements-dev.lock.txt"),
-]
-pin_pat = re.compile(r"^\s*([a-zA-Z0-9_.\-]+)\s*(==|~=|>=|<=|>|<)")
-bad = []
-for f in inputs:
-    for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), start=1):
-        s = line.strip()
-        if not s or s.startswith("#") or s.startswith("-r"):
-            continue
-        m = pin_pat.match(s)
-        if not m or m.group(2) != "==":
-            bad.append(f"{f}:{i}:{s}")
-for f in locks:
-    for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), start=1):
-        s = line.strip()
-        if not s or s.startswith("#"):
-            continue
-        if "--hash=sha256:" not in s:
-            bad.append(f"{f}:{i}: missing sha256 hash: {s}")
-if bad:
-    print("Dependency policy violation:")
-    print("\n".join(bad))
-    raise SystemExit(1)
-print("Input pins and lockfile hashes OK.")
-PY
+          from pathlib import Path
+          import re
+          
+          inputs = [
+              Path("python/requirements-runtime.in"),
+              Path("python/requirements-dev.in"),
+              Path("bench/requirements.txt"),
+          ]
+          locks = [
+              Path("python/requirements-runtime.lock.txt"),
+              Path("python/requirements-dev.lock.txt"),
+          ]
+          pin_pat = re.compile(r"^\s*([a-zA-Z0-9_.\-]+)\s*(==|~=|>=|<=|>|<)")
+          bad = []
+          for f in inputs:
+              for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), start=1):
+                  s = line.strip()
+                  if not s or s.startswith("#") or s.startswith("-r"):
+                      continue
+                  m = pin_pat.match(s)
+                  if not m or m.group(2) != "==":
+                      bad.append(f"{f}:{i}:{s}")
+          for f in locks:
+              for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), start=1):
+                  s = line.strip()
+                  if not s or s.startswith("#"):
+                      continue
+                  if "--hash=sha256:" not in s:
+                      bad.append(f"{f}:{i}: missing sha256 hash: {s}")
+          if bad:
+              print("Dependency policy violation:")
+              print("\n".join(bad))
+              raise SystemExit(1)
+          print("Input pins and lockfile hashes OK.")
+          PY
 
   lint:
     runs-on: ubuntu-latest
@@ -215,26 +215,34 @@ PY
         run: |
           cd python
           python src/server.py --dev --metrics-port 8000 &
+          ready=0
           for i in $(seq 1 20); do
-            python - <<'PY'
-import json, zmq
-ctx=zmq.Context()
-s=ctx.socket(zmq.REQ)
-s.setsockopt(zmq.RCVTIMEO, 500)
-s.connect("tcp://127.0.0.1:5555")
-try:
-    s.send_string(json.dumps("HEARTBEAT"))
-    print(s.recv_string())
-    raise SystemExit(0)
-except Exception:
-    raise SystemExit(1)
-finally:
-    s.close()
-    ctx.term()
-PY
-            if [ $? -eq 0 ]; then break; fi
+            if python - <<'PY'
+          import json, zmq
+          ctx=zmq.Context()
+          s=ctx.socket(zmq.REQ)
+          s.setsockopt(zmq.RCVTIMEO, 500)
+          s.connect("tcp://127.0.0.1:5555")
+          try:
+              s.send_string(json.dumps("HEARTBEAT"))
+              print(s.recv_string())
+              raise SystemExit(0)
+          except Exception:
+              raise SystemExit(1)
+          finally:
+              s.close()
+              ctx.term()
+          PY
+            then
+              ready=1
+              break
+            fi
             sleep 1
           done
+          if [ "$ready" -ne 1 ]; then
+            echo "Python bridge server failed readiness" >&2
+            exit 1
+          fi
       
       - name: Run integration tests
         run: lake env lean lean/PythonIntegration.lean
