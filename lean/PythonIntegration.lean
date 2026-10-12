@@ -1,5 +1,5 @@
 import Lean
-import ffi.ZMQ
+import FFI.ZMQ
 import MathDefs
 open Lean
 open IO
