@@ -1,5 +1,4 @@
 import pytest
-
 from src.codec import SerializationCodec
 
 
