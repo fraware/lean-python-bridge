@@ -272,6 +272,11 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
+      - name: Determine pytest-asyncio wheel digest
+        run: |
+          mkdir -p /tmp/pytest-asyncio-wheel
+          python -m pip download --no-deps --only-binary=:all: --dest /tmp/pytest-asyncio-wheel pytest-asyncio==1.4.0
+          python -m pip hash /tmp/pytest-asyncio-wheel/*.whl
       - name: Install security tools
         run: |
           python -m pip install --upgrade pip
