@@ -94,9 +94,7 @@ class SerializationCodec:
             # Fallback to JSON
             if selected_format != "json":
                 logger.info("Falling back to JSON serialization")
-                return struct.pack(
-                    "B", self._format_to_id("json")
-                ) + self._serialize_json(data)
+                return struct.pack("B", self._format_to_id("json")) + self._serialize_json(data)
             raise
 
     def deserialize(self, data: bytes) -> Any:
