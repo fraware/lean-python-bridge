@@ -73,6 +73,7 @@ jobs:
           flake8 python/ --max-line-length=88 --extend-ignore=E203,W503
           black --diff python/
           black --check python/
+          isort --diff python/
           isort --check-only python/
           mypy python/src/ --ignore-missing-imports
 
@@ -271,14 +272,6 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
-      - name: Report hashes for patched runtime dependencies
-        run: |
-          mkdir -p /tmp/bridge-patched-wheels
-          python -m pip download --no-deps --platform manylinux2014_x86_64 --python-version 311 --implementation cp --abi cp311 --only-binary=:all: --dest /tmp/bridge-patched-wheels msgpack==1.2.1 protobuf==5.29.6
-          for wheel in /tmp/bridge-patched-wheels/*.whl; do
-            printf 'PATCHED_WHEEL %s\\n' "$(basename "$wheel")"
-            python -m pip hash "$wheel"
-          done
       - name: Install security tools
         run: |
           python -m pip install --upgrade pip
