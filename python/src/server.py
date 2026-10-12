@@ -10,7 +10,6 @@ from typing import Any, Dict
 import numpy as np
 import zmq
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
-
 from validation import validate_matrix_model
 
 # Configure logging
