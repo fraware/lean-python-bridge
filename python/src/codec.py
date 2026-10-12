@@ -34,7 +34,7 @@ class CodecConfig:
 class SerializationCodec:
     """Multi-format serialization codec with automatic format selection"""
 
-    def __init__(self, config: CodecConfig = None):
+    def __init__(self, config: Optional[CodecConfig] = None):
         self.config = config or CodecConfig()
         self._format_stats = {"json": 0, "msgpack": 0, "protobuf": 0}
 
