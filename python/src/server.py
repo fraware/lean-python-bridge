@@ -10,7 +10,6 @@ from typing import Any, Dict
 import numpy as np
 import zmq
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
-
 from validation import validate_matrix_model
 
 # Configure logging
@@ -63,11 +62,15 @@ class AdvancedServer:
         self._requests_success = Counter(
             "requests_success", "Total number of successful requests"
         )
-        self._requests_error = Counter("requests_error", "Total number of failed requests")
+        self._requests_error = Counter(
+            "requests_error", "Total number of failed requests"
+        )
         self._request_duration = Histogram(
             "request_duration_seconds", "Request processing duration in seconds"
         )
-        self._uptime_seconds = Gauge("server_uptime_seconds", "Server uptime in seconds")
+        self._uptime_seconds = Gauge(
+            "server_uptime_seconds", "Server uptime in seconds"
+        )
 
     def setup_sockets(self):
         """Setup server socket."""
@@ -105,7 +108,10 @@ class AdvancedServer:
 
             if self.config.enable_metrics:
                 start_http_server(self.config.metrics_port)
-                logger.info("Prometheus metrics endpoint started on :%s", self.config.metrics_port)
+                logger.info(
+                    "Prometheus metrics endpoint started on :%s",
+                    self.config.metrics_port,
+                )
 
             logger.info("Advanced server started successfully")
 
@@ -154,7 +160,11 @@ class AdvancedServer:
 
         if data == "HEARTBEAT":
             return json.dumps(
-                {"status": "heartbeat_ack", "timestamp": time.time(), "server_id": f"server_{id(self)}"}
+                {
+                    "status": "heartbeat_ack",
+                    "timestamp": time.time(),
+                    "server_id": f"server_{id(self)}",
+                }
             ).encode("utf-8")
 
         if isinstance(data, dict) and "payload" in data:
@@ -236,7 +246,9 @@ def main():
     parser = argparse.ArgumentParser(description="Advanced Lean-Python Bridge Server")
     parser.add_argument("--dev", action="store_true", help="Development mode")
     parser.add_argument("--endpoint", default="tcp://*:5555", help="ZMQ endpoint")
-    parser.add_argument("--metrics-port", type=int, default=8000, help="Prometheus metrics port")
+    parser.add_argument(
+        "--metrics-port", type=int, default=8000, help="Prometheus metrics port"
+    )
 
     args = parser.parse_args()
 

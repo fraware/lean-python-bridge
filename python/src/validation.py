@@ -47,3 +47,8 @@ def validate_matrix_model(payload: dict) -> None:
         jsonschema.validate(instance=payload, schema=matrix_model_schema_v2)
     else:
         raise ValueError(f"Unsupported schema version: {version}")
+
+
+def load_schemas() -> dict[str, dict]:
+    """Return the supported, versioned matrix-model JSON schemas."""
+    return {"v1": matrix_model_schema_v1, "v2": matrix_model_schema_v2}

@@ -8,13 +8,14 @@ Supports multiple serialization formats with automatic selection:
 """
 
 import json
-import msgpack
+import logging
 import struct
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
+import msgpack
 from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf.struct_pb2 import Struct
-from typing import Any, Dict, Optional
-from dataclasses import dataclass
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class CodecConfig:
 class SerializationCodec:
     """Multi-format serialization codec with automatic format selection"""
 
-    def __init__(self, config: CodecConfig = None):
+    def __init__(self, config: Optional[CodecConfig] = None):
         self.config = config or CodecConfig()
         self._format_stats = {"json": 0, "msgpack": 0, "protobuf": 0}
 
@@ -94,9 +95,8 @@ class SerializationCodec:
             # Fallback to JSON
             if selected_format != "json":
                 logger.info("Falling back to JSON serialization")
-                return struct.pack(
-                    "B", self._format_to_id("json")
-                ) + self._serialize_json(data)
+                header = struct.pack("B", self._format_to_id("json"))
+                return header + self._serialize_json(data)
             raise
 
     def deserialize(self, data: bytes) -> Any:
@@ -208,9 +208,7 @@ class SerializationCodec:
 
 
 # Convenience functions for common use cases
-def serialize_matrix(
-    matrix: list, model_info: dict, schema_version: int = 1
-) -> bytes:
+def serialize_matrix(matrix: list, model_info: dict, schema_version: int = 1) -> bytes:
     """Serialize matrix data with automatic format selection"""
     codec = SerializationCodec()
     payload = {

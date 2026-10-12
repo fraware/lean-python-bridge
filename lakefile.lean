@@ -25,9 +25,9 @@ lean_lib LeanPythonBridge where
 
 target zmqffi_o (pkg : NPackage _package.name) : System.FilePath := do
   let oFile := pkg.buildDir / "ffi" / "LeanZMQ.o"
-  let srcJob ← inputTextFile <| pkg.dir / "lean" / "FFI" / "LeanZMQ.c"
+  let srcJob ← inputTextFile <| pkg.dir / "lean" / "ffi" / "LeanZMQ.c"
   -- Use system `cc` (not `leanc`) so glibc + libzmq headers resolve consistently on Linux.
-  let weakArgs := #["-I", (pkg.dir / "lean" / "FFI").toString]
+  let weakArgs := #["-I", (pkg.dir / "lean" / "ffi").toString]
   let traceArgs := #["-fPIC"]
   buildO oFile srcJob weakArgs traceArgs
 
