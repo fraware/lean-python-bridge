@@ -390,7 +390,7 @@ def main():
             print(f"\nCompleted {len(results)} benchmark configurations")
         else:
             result = benchmark.run_benchmark()
-            print(f"\nBenchmark completed:")
+            print("\nBenchmark completed:")
             print(f"  Total requests: {result.total_requests}")
             print(f"  Throughput: {result.throughput:.2f} req/s")
             print(f"  Error rate: {result.error_count/result.total_requests*100:.2f}%")
