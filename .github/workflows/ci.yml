@@ -71,6 +71,7 @@ jobs:
         run: |
           ruff check python/src python/tests bench
           flake8 python/ --max-line-length=88 --extend-ignore=E203,W503
+          black --diff python/
           black --check python/
           isort --check-only python/
           mypy python/src/ --ignore-missing-imports
@@ -278,8 +279,8 @@ jobs:
       - name: Run security scan
         run: |
           bandit -r python/src/ -f json -o bandit-report.json
-          pip-audit -r python/requirements-runtime.lock.txt --format json --output pip-audit-runtime-report.json
-          pip-audit -r python/requirements-dev.lock.txt --format json --output pip-audit-dev-report.json
+          pip-audit -r python/requirements-runtime.lock.txt --format json --output pip-audit-runtime-report.json || { cat pip-audit-runtime-report.json; exit 1; }
+          pip-audit -r python/requirements-dev.lock.txt --format json --output pip-audit-dev-report.json || { cat pip-audit-dev-report.json; exit 1; }
       
       - name: Upload security reports
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
