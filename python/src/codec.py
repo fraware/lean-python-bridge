@@ -8,13 +8,14 @@ Supports multiple serialization formats with automatic selection:
 """
 
 import json
-import msgpack
+import logging
 import struct
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
+import msgpack
 from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf.struct_pb2 import Struct
-from typing import Any, Dict, Optional
-from dataclasses import dataclass
-import logging
 
 logger = logging.getLogger(__name__)
 
