@@ -222,7 +222,7 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.elan/bin:$PATH"
-          elan default "$(tr -d '\\r\\n' < lean-toolchain)"
+          elan default "$(head -n 1 lean-toolchain)"
           lake --version
 
       - name: Download verified Lean build artifacts
