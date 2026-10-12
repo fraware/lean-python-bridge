@@ -12,7 +12,7 @@ package leanPythonBridge where
 @[default_target]
 lean_lib LeanPythonBridge where
   roots := #[
-    `ffi.ZMQ,
+    `FFI.ZMQ,
     `MathDefs,
     `MatrixProps,
     `PythonIntegration,
