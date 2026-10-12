@@ -1,11 +1,12 @@
-import subprocess
-import time
-import zmq
 import json
-import pytest
 import socket
+import subprocess
 import sys
+import time
 from pathlib import Path
+
+import pytest
+import zmq
 
 
 def is_port_open(port):
@@ -135,9 +136,9 @@ def test_validation_schemas():
 
 def test_imports():
     """Test that all required modules can be imported"""
-    import zmq
     import jsonschema
     import numpy
+    import zmq
 
     assert zmq is not None
     assert jsonschema is not None
