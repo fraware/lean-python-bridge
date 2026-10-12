@@ -207,9 +207,7 @@ class SerializationCodec:
 
 
 # Convenience functions for common use cases
-def serialize_matrix(
-    matrix: list, model_info: dict, schema_version: int = 1
-) -> bytes:
+def serialize_matrix(matrix: list, model_info: dict, schema_version: int = 1) -> bytes:
     """Serialize matrix data with automatic format selection"""
     codec = SerializationCodec()
     payload = {
