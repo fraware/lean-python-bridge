@@ -110,7 +110,8 @@ class AdvancedServer:
             if self.config.enable_metrics:
                 start_http_server(self.config.metrics_port)
                 logger.info(
-                    "Prometheus metrics endpoint started on :%s", self.config.metrics_port
+                    "Prometheus metrics endpoint started on :%s",
+                    self.config.metrics_port,
                 )
 
             logger.info("Advanced server started successfully")
