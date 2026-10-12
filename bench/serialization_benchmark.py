@@ -18,7 +18,7 @@ import os
 # Add the src directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python", "src"))
 
-from codec import SerializationCodec, benchmark_formats, CodecConfig
+from codec import SerializationCodec
 
 
 def generate_test_data(size: int, data_type: str = "matrix") -> dict:
