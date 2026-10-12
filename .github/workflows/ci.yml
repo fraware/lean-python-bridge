@@ -272,11 +272,6 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
-      - name: Check missing hashed lock dependency
-        run: |
-          mkdir -p /tmp/pytokens-wheel
-          python -m pip download --no-deps --platform manylinux2014_x86_64 --python-version 311 --implementation cp --abi cp311 --only-binary=:all: --dest /tmp/pytokens-wheel pytokens==0.4.1
-          python -m pip hash /tmp/pytokens-wheel/*.whl
       - name: Install security tools
         run: |
           python -m pip install --upgrade pip
